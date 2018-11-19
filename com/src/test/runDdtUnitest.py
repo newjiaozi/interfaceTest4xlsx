@@ -41,6 +41,6 @@ if __name__ == "__main__":
         runner = HTMLTestRunner(stream=f,title='测试报告',description='测试报告 详细信息')
         runner.run(suite)
 
-    #     unittest.main()
+
 
 

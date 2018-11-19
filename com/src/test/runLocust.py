@@ -9,7 +9,7 @@ from com.src.test.tools import *
 
 
 if __name__ == "__main__":
-    logger = getLogger()
+    logger = get_logger()
     random_port = getRandomPort()
     logger.info("获取随机Locust PORT:%s" % random_port)
     p = subprocess.Popen("locust -f locustAction.py -P %s --web-host=127.0.0.1" % random_port)

@@ -276,8 +276,8 @@ def getCurrentTimeHour():
 def getCurrentTimeDay():
     return datetime.datetime.now().strftime("%Y%m%d")
 
-def getLogger(name=__name__):
-    logger = logging.getLogger(name)
+def get_logger():
+    logger = logging.getLogger(__name__)
     logger.setLevel(level=logging.INFO)
     handler = handlers.TimedRotatingFileHandler(filename="..%slogs%slog.txt" % (os.sep,os.sep),when="D")
     handler.setLevel(logging.INFO)
@@ -291,7 +291,7 @@ def getLogger(name=__name__):
     return logger
 
 
-logger = getLogger(__name__)
+logger = get_logger()
 
 if __name__ == "__main__":
     # print(getTestData())

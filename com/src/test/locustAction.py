@@ -6,10 +6,10 @@ import sys
 sys.path.append("E:\pycharm_projects\interfaceTest4xlsx")
 print(sys.path)
 from com.src.test.config import getConfig
-from com.src.test.tools import getLocustTestData,parseParams,getLogger
+from com.src.test.tools import getLocustTestData,parseParams,get_logger
 
 
-logger = getLogger()
+
 
 class UserBehavior(TaskSet):
 
@@ -22,18 +22,23 @@ class UserBehavior(TaskSet):
             return parse_params
 
     def requestPost(self,url,data):
+        logger = get_logger()
         logger.info(url)
         logger.info(self.client.post(url,data))
         return self.client.post(url,data)
 
     def requestGet(self,url,payload=""):
+        logger = get_logger()
         logger.info(url)
         logger.info(payload)
         if "{" in url and "}" in url and payload:
             url_format = url.format(**payload)
             logger.info("转化后的url为：%s" % url_format)
-        logger.info(self.client.get(url_format))
-        return self.client.get(url_format)
+            logger.info(self.client.get(url_format))
+            return self.client.get(url_format)
+        else:
+            logger.info(self.client.get(url))
+            return self.client.get(url)
 
     @task()
     def actionTest(self):
