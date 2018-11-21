@@ -215,29 +215,40 @@ def parseParams(params):
     return {"url":url,"host_url":host_url,"path_url":path_url,"method":method,"headers":headers,"json":json,"data":data,"payload":payload,"checks":checks,"desc":desc,"exec":exec,"locust_exec":locust_exec,"store_resp":store_resp}
 
 def handleUSD(dict_obj):
-    for k,v in dict_obj.items():
-        # print(k,v)
-        if isinstance(v,dict):
-            # for i,j in v:
-            #     if isinstance(j,dict):
-            #         handleUSD(v,dict_obj_tmp=dict_obj)
-            handleUSD(v)
-        elif isinstance(v,str) and v.startswith("${") and v.endswith("}"):
-            matchObj = re.match(r"^\$\{(.*?)\((.*?)\)\}$",v)
-            meth = matchObj.group(1)
-            trans_prams = matchObj.group(2)
-            if meth and trans_prams:
-                dict_obj[k]=eval(meth)(trans_prams)
-                # print(eval(meth)(trans_prams))
-            elif meth:
-                dict_obj[k] = eval(meth)()
-                # print(eval(meth))
-            # print("@@",meth,trans_prams)
-        elif isinstance(v,str) and v.startswith("$"):
-            ini_param = v[1:]
-            dict_obj[k] = getRunningINI(ini_param)
-            # print("##",getRunningINI("ppp"))
-            # print("!!",ini_param)
+    if isinstance(dict_obj,dict):
+        for k,v in dict_obj.items():
+            # print(k,v)
+            if isinstance(v,dict):
+                # for i,j in v:
+                #     if isinstance(j,dict):
+                #         handleUSD(v,dict_obj_tmp=dict_obj)
+                handleUSD(v)
+            elif isinstance(v,str) and v.startswith("${") and v.endswith("}"):
+                matchObj = re.match(r"^\$\{(.*?)\((.*?)\)\}$",v)
+                meth = matchObj.group(1)
+                trans_prams = matchObj.group(2)
+                if meth and trans_prams:
+                    dict_obj[k]=eval(meth)(trans_prams)
+                    # print(eval(meth)(trans_prams))
+                elif meth:
+                    dict_obj[k] = eval(meth)()
+                    # print(eval(meth))
+                # print("@@",meth,trans_prams)
+            elif isinstance(v,str) and v.startswith("$"):
+                ini_param = v[1:]
+                dict_obj[k] = getRunningINI(ini_param)
+                # print("##",getRunningINI("ppp"))
+                # print("!!",ini_param)
+    ## 处理整体生成请求参数，如果格式json，data，params字段符合格式"${method()}",请求结果替换为整体入参。
+    elif isinstance(v,str) and v.startswith("${") and v.endswith("}"):
+        matchObj = re.match(r"^\$\{(.*?)\((.*?)\)\}$",v)
+        meth = matchObj.group(1)
+        trans_prams = matchObj.group(2)
+        if meth and trans_prams:
+            dict_obj=eval(meth)(trans_prams)
+            # print(eval(meth)(trans_prams))
+        elif meth:
+            dict_obj = eval(meth)()
     return dict_obj
 
 def setRunningINI(s_key,s_value,section="running",encoding="utf-8"):
