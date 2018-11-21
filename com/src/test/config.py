@@ -10,3 +10,4 @@ def getConfig():
     return {"testcase_path":testcase_path,"testcase_name":testcase_name,
             "locust_min":locust_min,"locust_max":locust_max}
 
+

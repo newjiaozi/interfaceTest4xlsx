@@ -19,11 +19,14 @@ class UserBehavior(TaskSet):
 
     @classmethod
     def getLocustData(self):
+        parse_params_list = []
         locust_data = getLocustTestData()
         if locust_data:
-            parse_params = parseParams(locust_data[0])
+            for i in locust_data:
+                parse_params = parseParams(i)
+                parse_params_list.append(parse_params)
             # logger.info(parse_params)
-            return parse_params
+            return parse_params_list
 
     def requestPost(self,url,data):
         logger.info(url)
@@ -57,20 +60,23 @@ class UserBehavior(TaskSet):
 
     @task()
     def actionTest(self):
-        params_dict = self.getLocustData()
-        if params_dict["json"]:
-            self.requestPost(params_dict["path_url"],params_dict["json"])
-        elif params_dict["data"]:
-            self.requestPost(params_dict["path_url"], params_dict["data"])
-        else:
-            self.requestGet(params_dict["path_url"],params_dict["payload"])
+        params_dict_list = self.getLocustData()
+        logger.info(params_dict_list)
+        for i in params_dict_list:
+            logger.info(i)
+            if i["json"]:
+                self.requestPost(i["path_url"],i["json"])
+            elif i["data"]:
+                self.requestPost(i["path_url"], i["data"])
+            else:
+                self.requestGet(i["path_url"],i["payload"])
 
 
 class WebsiteUser(HttpLocust):
-    params_dict = UserBehavior.getLocustData()
+    params_dict_list = UserBehavior.getLocustData()
     task_set = UserBehavior
     cf = getConfig()
-    host = params_dict['host_url']
+    host = params_dict_list[0]['host_url']
     min_wait = cf["locust_min"]
     max_wait = cf["locust_max"]
 
