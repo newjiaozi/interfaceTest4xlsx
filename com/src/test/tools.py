@@ -14,6 +14,12 @@ from com.src.test.logs import logger
 import pymysql
 from faker import Faker
 import pandas
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5 as Cipher_pkcs1_v1_5
+import binascii
+import base64
+from com.src.test.encrpt import *
+from requests.cookies import RequestsCookieJar
 
 
 ##初始化参数,把测试用例拷贝一份出来进行测试
@@ -80,15 +86,14 @@ def requestAction(params):
     result = False
     params_dict = parseParams(params)
     # print("REQUEST BODY ：",params_dict)
-    if params_dict["json"]:
-        # print("POST_JSON")
-        resp = requests.request(params_dict["method"],params_dict['url'],json=params_dict['json'],params=params_dict["payload"],headers= params_dict["headers"])
-    elif params_dict["data"]:
-        # print("POST_DATA")
-        resp = requests.request(params_dict["method"],params_dict['url'],data=params_dict['data'],params=params_dict["payload"],headers= params_dict["headers"])
+    logger.info("#"*30)
+    logger.info(params_dict)
+    if params_dict["data"]:
+        logger.info("POST_DATA")
+        resp = requests.request(params_dict["method"],params_dict['url'],data=params_dict['data'],params=params_dict["payload"],cookies=params_dict["cookie"],headers= params_dict["headers"],verify=False)
     else:
-        # print("GET_PARAMS")
-        resp = requests.request(params_dict["method"],params_dict['url'],params=params_dict["payload"],headers= params_dict["headers"])
+        logger.info("GET_PARAMS")
+        resp = requests.request(params_dict["method"],params_dict['url'],params=params_dict["payload"],cookies=params_dict["cookie"],headers= params_dict["headers"],verify=False)
     logger.info("respUrl:%s" % resp.url)
     logger.info("resp:%s" % resp.text)
     # print(resp.url)
@@ -105,28 +110,12 @@ def requestAction(params):
         ## 修改为jsonpath格式的 {"jsonpath":"key"}
         ## jsonpath获取值，命名为key=值，放入ini
         if store_resp:
-            set_inis = {}
-
-            # for k,v in store_resp.items():
-            #     if isinstance(v,list):
-            #         tmp = ""
-            #         tmp_value = ""
-            #         for i in v:
-            #             if tmp:
-            #                 tmp_value = tmp[i]
-            #             else:
-            #                 tmp = resp_json[i]
-            #         set_inis[k] = tmp_value
-            #     elif isinstance(v,str):
-            #         set_inis[k]= v
-
             ## jsonpath方式
             for k,v in store_resp.items():
                 value = jsonpath.jsonpath(resp_json,k)
                 # set_inis[v] = value
             # for k,v in set_inis.items():
                 setRunningINI(v,value[0])
-
         ## 需要校验的预期结果，使用jsonpath，excel数据格式为{"jsonpath":value}
         check_point = params_dict['checks']
         if check_point:
@@ -136,11 +125,15 @@ def requestAction(params):
             for p in check_point:
                 value = jsonpath.jsonpath(resp_json,p) ##resp_json 为需要处理的json，p为json路径的jsonpath
                 # print("value",value[0])
-                logger.info(value)
-                logger.info(value[0])
-                if value[0] == check_point[p]:
-                    pass_num+=1
+                if value:
+                    # logger.info(value)
+                    # logger.info(value[0])
+                    if value[0] == check_point[p]:
+                        pass_num+=1
+                else:
+                    return result
             if len(check_point) == pass_num:
+                logger.info("checkpoint校验通过！")
                 result = True
         return result
     else:
@@ -156,7 +149,7 @@ def parseParams(params):
     host_url =""
     method =""
     headers={}
-    json={}
+    cookie={}
     data={}
     payload={}
     checks={}
@@ -177,11 +170,13 @@ def parseParams(params):
     ##headers
     if params[3]:
         headers = eval(params[3].strip())
+        headers = handleUSD(headers)
 
-    ## json
+    ## cookie
     if params[4]:
-        json = eval(params[4].strip())
-        json = handleUSD(json)
+        cookie = eval(params[4].strip())
+        cookie = handleUSD(cookie)
+
     ## data
     elif params[5]:
         data = eval(params[5].strip())
@@ -212,32 +207,43 @@ def parseParams(params):
     if params[11]:
         store_resp = eval(params[11].strip())
 
-    return {"url":url,"host_url":host_url,"path_url":path_url,"method":method,"headers":headers,"json":json,"data":data,"payload":payload,"checks":checks,"desc":desc,"exec":exec,"locust_exec":locust_exec,"store_resp":store_resp}
+    return {"url":url,"host_url":host_url,"path_url":path_url,"method":method,"headers":headers,"cookie":cookie,"data":data,"payload":payload,"checks":checks,"desc":desc,"exec":exec,"locust_exec":locust_exec,"store_resp":store_resp}
 
 def handleUSD(dict_obj):
-    for k,v in dict_obj.items():
-        # print(k,v)
-        if isinstance(v,dict):
-            # for i,j in v:
-            #     if isinstance(j,dict):
-            #         handleUSD(v,dict_obj_tmp=dict_obj)
-            handleUSD(v)
-        elif isinstance(v,str) and v.startswith("${") and v.endswith("}"):
-            matchObj = re.match(r"^\$\{(.*?)\((.*?)\)\}$",v)
-            meth = matchObj.group(1)
-            trans_prams = matchObj.group(2)
-            if meth and trans_prams:
-                dict_obj[k]=eval(meth)(trans_prams)
-                # print(eval(meth)(trans_prams))
-            elif meth:
-                dict_obj[k] = eval(meth)()
-                # print(eval(meth))
-            # print("@@",meth,trans_prams)
-        elif isinstance(v,str) and v.startswith("$"):
-            ini_param = v[1:]
-            dict_obj[k] = getRunningINI(ini_param)
-            # print("##",getRunningINI("ppp"))
-            # print("!!",ini_param)
+    if isinstance(dict_obj,dict):
+        for k,v in dict_obj.items():
+            # print(k,v)
+            if isinstance(v,dict):
+                # for i,j in v:
+                #     if isinstance(j,dict):
+                #         handleUSD(v,dict_obj_tmp=dict_obj)
+                handleUSD(v)
+            elif isinstance(v,str) and v.startswith("${") and v.endswith("}"):
+                matchObj = re.match(r"^\$\{(.*?)\((.*?)\)\}$",v)
+                meth = matchObj.group(1)
+                trans_prams = matchObj.group(2)
+                if meth and trans_prams:
+                    dict_obj[k]=eval(meth)(trans_prams)
+                    # print(eval(meth)(trans_prams))
+                elif meth:
+                    dict_obj[k] = eval(meth)()
+                    # print(eval(meth))
+                # print("@@",meth,trans_prams)
+            elif isinstance(v,str) and v.startswith("$"):
+                ini_param = v[1:]
+                dict_obj[k] = getRunningINI(ini_param)
+                # print("##",getRunningINI("ppp"))
+                # print("!!",ini_param)
+    ## 处理整体生成请求参数，如果格式json，data，params字段符合格式"${method()}",请求结果替换为整体入参。
+    elif isinstance(dict_obj,str) and dict_obj.startswith("${") and dict_obj.endswith("}"):
+        matchObj = re.match(r"^\$\{(.*?)\((.*?)\)\}$",dict_obj)
+        meth = matchObj.group(1)
+        trans_prams = matchObj.group(2)
+        if meth and trans_prams:
+            dict_obj=eval(meth)(trans_prams)
+            # print(eval(meth)(trans_prams))
+        elif meth:
+            dict_obj = eval(meth)()
     return dict_obj
 
 def setRunningINI(s_key,s_value,section="running",encoding="utf-8"):
@@ -257,9 +263,9 @@ def setRunningINI(s_key,s_value,section="running",encoding="utf-8"):
         cf.write(f2)
     logger.info("写入成功%s{%s:%s}" % (section, s_key, s_value))
 
-def getRunningINI(s_key,section="running",inifile="running.ini",encoding=""):
+def getRunningINI(s_key,section="running",inifile="running.ini"):
     cf = configparser.ConfigParser()
-    cf.read(inifile,encoding=encoding)
+    cf.read(inifile)
     res = cf.get(section,s_key)
     if not section == "email":
         logger.info("从%s中读取%s,值为%s" % (section,s_key,res))
@@ -275,6 +281,10 @@ def getRandomMobileNum(returnStr=True):
 def getRandomPort():
     mobileNo = randint(9000,50000)
     return mobileNo
+
+def getOneIP():
+    return "99.99.99.98"
+
 
 def getCurrentTimeHour():
     return datetime.datetime.now().strftime("%Y%m%d%H")
@@ -349,7 +359,9 @@ def nextPhone():
         logger.error("StopIteration：%s" % e)
         phoneNum = genPhoneNumFromCSV()
         logger.info("重新创建生成器：%s" % "genPhoneNumFromCSV")
-
+        phone = next(phoneNum)
+        logger.info("phone:%s" % phone)
+        return phone
 def nextPasswd():
     try:
         global passwd
@@ -360,6 +372,9 @@ def nextPasswd():
         logger.error("StopIteration：%s" % e)
         passwd = genPhoneNumFromCSV()
         logger.info("重新创建生成器：%s" % "genPasswdFromCSV")
+        passwd_next = next(passwd)
+        logger.info("passwd_next:%s" % passwd_next)
+        return passwd
 
 def nextPhoneAndPasswd():
     try:
@@ -371,6 +386,52 @@ def nextPhoneAndPasswd():
         logger.error("StopIteration：%s" % e)
         phoneAndPasswd = genPhoneAndPasswdFromCSV()
         logger.info("重新创建生成器：%s" % "genPhoneAndPasswdFromCSV")
+        phoneAndPasswd_next = next(phoneAndPasswd)
+        return phoneAndPasswd_next
+
+def getIP():
+    faker = Faker("zh_CN")
+    ip = faker.ipv4()
+    logger.info("随机生成ip：%s" % ip)
+    return ip
+
+
+def setCookieNEO_SES(key):
+    cookie_jar = RequestsCookieJar()
+    cookie_jar.set(key, getRunningINI(key), path="/",domain=".dongmanmanhua.cn")
+    return cookie_jar
+
+
+
+def getencpw():
+    phone= "15010173763"
+    passwd = "123qwe"
+    resp = requests.post(" http://dev.dongmanmanhua.cn/member/login/rsa/getKeys")
+    resp_json = resp.json()
+    sessionKey = resp_json["sessionKey"]
+    keyName = resp_json["keyName"]
+    nvalue = int(resp_json["nvalue"])
+    evalue = int(resp_json["evalue"],16)
+    key =  RSA.construct((evalue,nvalue)) #根据e,n生成publicKey
+    logger.info(key)
+
+    text = chr(len(sessionKey))+sessionKey+chr(len(phone))+phone+chr(len(passwd))+passwd
+    # encpw = rsa.encrypt(text,key)
+    # text="www.baidu.com"
+    text = text.encode("utf-8")
+    cipher = Cipher_pkcs1_v1_5.new(key)
+    encpw = cipher.encrypt(text)
+    base64.b64encode(encpw)
+    encpw = binascii.b2a_hex(encpw)
+    return keyName,encpw
+
+
+
+def getLoginForms():
+    phone,passwd = nextPhoneAndPasswd()
+    # logger.info("请输入验证码：")
+    # passwd = input("请输入验证码：")
+    return getLoin(str(phone),str(passwd))
 
 
 
@@ -382,4 +443,4 @@ if __name__ == "__main__":
     # dict_obj2 = {"q1": "123", "q2": "${getRandomMobileNum()}", "q3": "${getRandomMobileNum(33)}", "q4": "$ppp","q5":{"q6":"${getRandomMobileNum(33)}"}}
     # print(handleUSD(dict_obj2))
     # print(getIDCARD())
-    pass
+    print(getencpw())
